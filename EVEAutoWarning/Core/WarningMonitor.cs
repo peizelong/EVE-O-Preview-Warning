@@ -10,10 +10,18 @@ public class WarningMonitor : IDisposable
     private System.Windows.Forms.Timer _monitorTimer;
     private bool _isMonitoring;
     private bool _disposed;
+    private bool _isProcessing;
+    private bool _enableOcr = true;
 
     public bool IsMonitoring => _isMonitoring;
     public Rectangle ScanRegion { get; set; }
     public int MonitorInterval { get; set; } = 500;
+
+    public bool EnableOcr
+    {
+        get => _enableOcr;
+        set => _enableOcr = value;
+    }
 
     public event EventHandler<AlertEventArgs> AlertTriggered;
     public event EventHandler<AlertEventArgs> AlertCleared;
@@ -66,16 +74,30 @@ public class WarningMonitor : IDisposable
 
     private bool _wasAlerting = false;
 
-    private void MonitorTimer_Tick(object sender, EventArgs e)
+    private async void MonitorTimer_Tick(object sender, EventArgs e)
     {
+        if (_isProcessing) return;
+
+        _isProcessing = true;
         try
         {
             using Bitmap screenshot = _screenCapture.CaptureRegion(ScanRegion);
-            
-            TemplateMatchResult templateResult = _templateDetector.DetectInRegion(
-                screenshot, 
-                new Rectangle(0, 0, screenshot.Width, screenshot.Height)
-            );
+
+            TemplateMatchResult templateResult;
+            if (_enableOcr)
+            {
+                templateResult = await _templateDetector.DetectInRegionAsync(
+                    screenshot,
+                    new Rectangle(0, 0, screenshot.Width, screenshot.Height)
+                );
+            }
+            else
+            {
+                templateResult = _templateDetector.DetectInRegion(
+                    screenshot,
+                    new Rectangle(0, 0, screenshot.Width, screenshot.Height)
+                );
+            }
 
             TemplateDetected?.Invoke(this, templateResult);
 
@@ -101,6 +123,10 @@ public class WarningMonitor : IDisposable
         catch (Exception ex)
         {
             Console.WriteLine($"监控出错: {ex.Message}");
+        }
+        finally
+        {
+            _isProcessing = false;
         }
     }
 

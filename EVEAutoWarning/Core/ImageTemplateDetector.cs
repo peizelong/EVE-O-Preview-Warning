@@ -4,12 +4,15 @@ using System.Reflection;
 
 namespace EVEAutoWarning.Core;
 
-public class ImageTemplateDetector
+public class ImageTemplateDetector : IDisposable
 {
     private Bitmap _whiteTemplate;
     private Bitmap _redTemplate;
     private Bitmap _orangeTemplate;
     private double _matchThreshold = 0.85;
+    private OcrRecognizer _ocrRecognizer;
+    private int _textRegionWidth = 150;
+    private int _textRegionHeight = 30;
 
     public double MatchThreshold
     {
@@ -17,9 +20,24 @@ public class ImageTemplateDetector
         set => _matchThreshold = Math.Clamp(value, 0.5, 1.0);
     }
 
+    public int TextRegionWidth
+    {
+        get => _textRegionWidth;
+        set => _textRegionWidth = Math.Max(50, Math.Min(500, value));
+    }
+
+    public int TextRegionHeight
+    {
+        get => _textRegionHeight;
+        set => _textRegionHeight = Math.Max(15, Math.Min(100, value));
+    }
+
+    public OcrRecognizer Ocr => _ocrRecognizer;
+
     public ImageTemplateDetector()
     {
         LoadEmbeddedTemplates();
+        _ocrRecognizer = new OcrRecognizer();
     }
 
     private void LoadEmbeddedTemplates()
@@ -70,6 +88,87 @@ public class ImageTemplateDetector
     public bool HasTemplatesLoaded()
     {
         return _whiteTemplate != null || _redTemplate != null || _orangeTemplate != null;
+    }
+
+    public async Task<TemplateMatchResult> DetectInRegionAsync(Bitmap screenshot, Rectangle region)
+    {
+        var result = new TemplateMatchResult();
+
+        if (_redTemplate != null)
+        {
+            var matches = FindTemplateMatches(screenshot, _redTemplate, region, ColorType.Red);
+            await RecognizeTextForMatches(screenshot, matches);
+            result.RedMatches.AddRange(matches);
+        }
+
+        if (_orangeTemplate != null)
+        {
+            var matches = FindTemplateMatches(screenshot, _orangeTemplate, region, ColorType.Orange);
+            await RecognizeTextForMatches(screenshot, matches);
+            result.OrangeMatches.AddRange(matches);
+        }
+
+        if (_whiteTemplate != null)
+        {
+            var matches = FindTemplateMatches(screenshot, _whiteTemplate, region, ColorType.White);
+            await RecognizeTextForMatches(screenshot, matches);
+            result.WhiteMatches.AddRange(matches);
+        }
+
+        result.HasAlert = result.RedMatches.Count > 0 || result.OrangeMatches.Count > 0 || result.WhiteMatches.Count > 0;
+
+        return result;
+    }
+
+    private async Task RecognizeTextForMatches(Bitmap screenshot, List<TemplateMatch> matches)
+    {
+        foreach (var match in matches)
+        {
+            int templateWidth = GetTemplateWidth(match.ColorType) ?? 20;
+            int textX = match.Location.X + templateWidth + 5;
+            int textY = match.Location.Y + 2;
+
+            textX = Math.Max(0, textX);
+            textY = Math.Max(0, textY);
+
+            int textWidth = Math.Min(_textRegionWidth, screenshot.Width - textX);
+            int textHeight = Math.Min(_textRegionHeight - 4, screenshot.Height - textY);
+
+            if (textWidth > 0 && textHeight > 0)
+            {
+                var textRegion = new Rectangle(textX, textY, textWidth, textHeight);
+                match.TextRegion = textRegion;
+                string rawText = await _ocrRecognizer.RecognizeTextAsync(screenshot, textRegion);
+                match.RecognizedText = CleanRecognizedText(rawText);
+            }
+        }
+    }
+
+    private string CleanRecognizedText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        text = text.Trim();
+
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"^[^\w]+", "");
+        
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"[^\w\s\-]", "");
+        
+        text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+
+        return text;
+    }
+
+    private int? GetTemplateWidth(ColorType colorType)
+    {
+        return colorType switch
+        {
+            ColorType.Red => _redTemplate?.Width,
+            ColorType.Orange => _orangeTemplate?.Width,
+            ColorType.White => _whiteTemplate?.Width,
+            _ => null
+        };
     }
 
     public TemplateMatchResult DetectInRegion(Bitmap screenshot, Rectangle region)
@@ -208,6 +307,7 @@ public class ImageTemplateDetector
         _whiteTemplate?.Dispose();
         _redTemplate?.Dispose();
         _orangeTemplate?.Dispose();
+        _ocrRecognizer?.Dispose();
     }
 }
 
@@ -226,6 +326,8 @@ public class TemplateMatch
     public Point Location { get; set; }
     public double Similarity { get; set; }
     public ColorType ColorType { get; set; }
+    public string RecognizedText { get; set; } = string.Empty;
+    public Rectangle TextRegion { get; set; }
 }
 
 public enum ColorType

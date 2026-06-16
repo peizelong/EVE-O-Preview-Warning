@@ -27,6 +27,8 @@ public partial class MainForm : Form
     private Label _lblWhiteMatch;
     private GroupBox _grpLog;
     private ListBox _lstLog;
+    private GroupBox _grpOcrText;
+    private TextBox _txtOcrText;
 
     public MainForm()
     {
@@ -57,8 +59,8 @@ public partial class MainForm : Form
     private void InitializeComponent()
     {
         this.Text = "EVE 自动预警";
-        this.Size = new Size(500, 580);
-        this.MinimumSize = new Size(480, 520);
+        this.Size = new Size(500, 720);
+        this.MinimumSize = new Size(480, 660);
         this.StartPosition = FormStartPosition.CenterScreen;
         this.FormBorderStyle = FormBorderStyle.FixedSingle;
         this.MaximizeBox = false;
@@ -129,7 +131,7 @@ public partial class MainForm : Form
 
         var lblDetectionMode = new Label
         {
-            Text = "检测模式: 模板匹配",
+            Text = "检测模式: 模板匹配 + OCR文字识别",
             Location = new Point(10, 75),
             Size = new Size(440, 18),
             ForeColor = Color.Blue
@@ -138,6 +140,28 @@ public partial class MainForm : Form
         _grpTemplate.Controls.AddRange(new Control[] { _lblTemplateStatus, _lblRedMatch, _lblOrangeMatch, _lblWhiteMatch, lblDetectionMode });
 
         yPos += 110;
+
+        _grpOcrText = new GroupBox
+        {
+            Text = "识别文字",
+            Location = new Point(10, yPos),
+            Size = new Size(460, 80)
+        };
+
+        _txtOcrText = new TextBox
+        {
+            Location = new Point(10, 20),
+            Size = new Size(440, 50),
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            ReadOnly = true,
+            Font = new Font("Microsoft YaHei", 9),
+            BackColor = Color.White
+        };
+
+        _grpOcrText.Controls.Add(_txtOcrText);
+
+        yPos += 90;
 
         _grpRegion = new GroupBox
         {
@@ -199,20 +223,20 @@ public partial class MainForm : Form
         {
             Text = "日志",
             Location = new Point(10, yPos),
-            Size = new Size(460, 150)
+            Size = new Size(460, 130)
         };
 
         _lstLog = new ListBox
         {
             Location = new Point(10, 20),
-            Size = new Size(440, 120),
+            Size = new Size(440, 100),
             Font = new Font("Consolas", 9)
         };
 
         _grpLog.Controls.Add(_lstLog);
 
         this.Controls.AddRange(new Control[] {
-            _grpStatus, _grpTemplate, _grpRegion, _btnStartStop, _btnSelectRegion,
+            _grpStatus, _grpTemplate, _grpOcrText, _grpRegion, _btnStartStop, _btnSelectRegion,
             _btnTestSound, _btnSettings, _grpLog
         });
 
@@ -295,6 +319,8 @@ public partial class MainForm : Form
                     _lblWhiteMatch.Font = new Font(_lblWhiteMatch.Font, FontStyle.Regular);
                     _lblWhiteMatch.ForeColor = Color.Gray;
                 }
+
+                UpdateOcrTextDisplay(result);
             });
         };
 
@@ -435,6 +461,44 @@ public partial class MainForm : Form
     {
         var region = _monitor.ScanRegion;
         _lblRegionInfo.Text = $"区域: X={region.X}, Y={region.Y}\n大小: {region.Width} x {region.Height} 像素";
+    }
+
+    private void UpdateOcrTextDisplay(TemplateMatchResult result)
+    {
+        var textLines = new List<string>();
+
+        if (result.RedMatches.Count > 0)
+        {
+            var redTexts = result.RedMatches
+                .Where(m => !string.IsNullOrWhiteSpace(m.RecognizedText))
+                .Select(m => $"[红] {m.RecognizedText}");
+            textLines.AddRange(redTexts);
+        }
+
+        if (result.OrangeMatches.Count > 0)
+        {
+            var orangeTexts = result.OrangeMatches
+                .Where(m => !string.IsNullOrWhiteSpace(m.RecognizedText))
+                .Select(m => $"[橙] {m.RecognizedText}");
+            textLines.AddRange(orangeTexts);
+        }
+
+        if (result.WhiteMatches.Count > 0)
+        {
+            var whiteTexts = result.WhiteMatches
+                .Where(m => !string.IsNullOrWhiteSpace(m.RecognizedText))
+                .Select(m => $"[白] {m.RecognizedText}");
+            textLines.AddRange(whiteTexts);
+        }
+
+        if (textLines.Count > 0)
+        {
+            _txtOcrText.Text = string.Join(Environment.NewLine, textLines);
+        }
+        else
+        {
+            _txtOcrText.Text = string.Empty;
+        }
     }
 
     private void LogMessage(string message)

@@ -1,0 +1,65 @@
+System.InvalidOperationException: Error constructing handler for request of type MediatR.IRequestHandler`2[EveOPreview.Mediator.Messages.StartService,MediatR.Unit]. Register your handlers with the container. See the samples in GitHub for examples.
+ ---> System.InvalidOperationException: Unable to resolve type: MediatR.IRequestHandler`2[EveOPreview.Mediator.Messages.StartService,MediatR.Unit], service name: 
+ ---> System.InvalidOperationException: Unresolved dependency [Target Type: EveOPreview.Mediator.Handlers.Services.StartStopServiceHandler], [Parameter: manager(EveOPreview.Services.IThumbnailManager)], [Requested dependency: ServiceType:EveOPreview.Services.IThumbnailManager, ServiceName:]
+ ---> System.InvalidOperationException: Unresolved dependency [Target Type: EveOPreview.Services.ThumbnailManager], [Parameter: alertService(EveOPreview.Alert.IAlertService)], [Requested dependency: ServiceType:EveOPreview.Alert.IAlertService, ServiceName:]
+ ---> System.InvalidOperationException: Unresolved dependency [Target Type: EveOPreview.Alert.AlertService], [Parameter: thumbnailManager(EveOPreview.Services.IThumbnailManager)], [Requested dependency: ServiceType:EveOPreview.Services.IThumbnailManager, ServiceName:]
+ ---> System.InvalidOperationException: Recursive dependency detected: ServiceType:EveOPreview.Services.IThumbnailManager, ServiceName:]
+   at LightInject.ServiceContainer.<>c__DisplayClass173_0.<CreateEmitMethodWrapper>b__0(IEmitter ms)
+   at LightInject.ServiceContainer.EmitConstructorDependency(IEmitter emitter, Dependency dependency)
+   --- End of inner exception stack trace ---
+   at LightInject.ServiceContainer.EmitConstructorDependency(IEmitter emitter, Dependency dependency)
+   at LightInject.ServiceContainer.EmitConstructorDependencies(ConstructionInfo constructionInfo, IEmitter emitter, Action`1 decoratorTargetEmitter)
+   at LightInject.ServiceContainer.EmitNewInstanceUsingImplementingType(IEmitter emitter, ConstructionInfo constructionInfo, Action`1 decoratorTargetEmitMethod)
+   at LightInject.ServiceContainer.EmitNewInstance(ServiceRegistration serviceRegistration, IEmitter emitter)
+   at LightInject.ServiceContainer.EmitNewInstanceWithDecorators(ServiceRegistration serviceRegistration, IEmitter emitter)
+   at LightInject.ServiceContainer.<>c__DisplayClass219_0.<ResolveEmitMethod>b__0(IEmitter emitter)
+   at LightInject.ServiceContainer.<>c__DisplayClass173_0.<CreateEmitMethodWrapper>b__0(IEmitter ms)
+   at LightInject.ServiceContainer.EmitConstructorDependency(IEmitter emitter, Dependency dependency)
+   --- End of inner exception stack trace ---
+   at LightInject.ServiceContainer.EmitConstructorDependency(IEmitter emitter, Dependency dependency)
+   at LightInject.ServiceContainer.EmitConstructorDependencies(ConstructionInfo constructionInfo, IEmitter emitter, Action`1 decoratorTargetEmitter)
+   at LightInject.ServiceContainer.EmitNewInstanceUsingImplementingType(IEmitter emitter, ConstructionInfo constructionInfo, Action`1 decoratorTargetEmitMethod)
+   at LightInject.ServiceContainer.EmitNewInstance(ServiceRegistration serviceRegistration, IEmitter emitter)
+   at LightInject.ServiceContainer.EmitNewInstanceWithDecorators(ServiceRegistration serviceRegistration, IEmitter emitter)
+   at LightInject.ServiceContainer.<>c__DisplayClass219_0.<ResolveEmitMethod>b__3(IEmitter e)
+   at LightInject.ServiceContainer.CreateDynamicMethodDelegate(Action`1 serviceEmitter)
+   at LightInject.ServiceContainer.CreateInstanceDelegateIndex(Action`1 emitMethod)
+   at LightInject.ServiceContainer.<>c__DisplayClass222_0.<EmitLifetime>b__3(ServiceRegistration _)
+   at LightInject.LazyConcurrentDictionary`2.<>c__DisplayClass4_1.<GetOrAdd>b__1()
+   at System.Lazy`1.ViaFactory(LazyThreadSafetyMode mode)
+   at System.Lazy`1.ExecutionAndPublication(LazyHelper executionAndPublication, Boolean useDefaultConstructor)
+   at System.Lazy`1.CreateValue()
+   at LightInject.LazyConcurrentDictionary`2.GetOrAdd(TKey key, Func`2 valueFactory)
+   at LightInject.ServiceContainer.EmitLifetime(ServiceRegistration serviceRegistration, Action`1 emitMethod, IEmitter emitter)
+   at LightInject.ServiceContainer.<>c__DisplayClass219_0.<ResolveEmitMethod>b__0(IEmitter emitter)
+   at LightInject.ServiceContainer.<>c__DisplayClass173_0.<CreateEmitMethodWrapper>b__0(IEmitter ms)
+   at LightInject.ServiceContainer.EmitConstructorDependency(IEmitter emitter, Dependency dependency)
+   --- End of inner exception stack trace ---
+   at LightInject.ServiceContainer.EmitConstructorDependency(IEmitter emitter, Dependency dependency)
+   at LightInject.ServiceContainer.EmitConstructorDependencies(ConstructionInfo constructionInfo, IEmitter emitter, Action`1 decoratorTargetEmitter)
+   at LightInject.ServiceContainer.EmitNewInstanceUsingImplementingType(IEmitter emitter, ConstructionInfo constructionInfo, Action`1 decoratorTargetEmitMethod)
+   at LightInject.ServiceContainer.EmitNewInstance(ServiceRegistration serviceRegistration, IEmitter emitter)
+   at LightInject.ServiceContainer.EmitNewInstanceWithDecorators(ServiceRegistration serviceRegistration, IEmitter emitter)
+   at LightInject.ServiceContainer.<>c__DisplayClass219_0.<ResolveEmitMethod>b__0(IEmitter emitter)
+   at LightInject.ServiceContainer.<>c__DisplayClass173_0.<CreateEmitMethodWrapper>b__0(IEmitter ms)
+   at LightInject.ServiceContainer.<>c__DisplayClass173_0.<CreateEmitMethodWrapper>b__0(IEmitter ms)
+   at LightInject.ServiceContainer.CreateDynamicMethodDelegate(Action`1 serviceEmitter)
+   at LightInject.ServiceContainer.CreateDelegate(Type serviceType, String serviceName, Boolean throwError)
+   --- End of inner exception stack trace ---
+   at LightInject.ServiceContainer.CreateDelegate(Type serviceType, String serviceName, Boolean throwError)
+   at LightInject.ServiceContainer.CreateDefaultDelegate(Type serviceType, Boolean throwError)
+   at LightInject.ServiceContainer.GetInstance(Type serviceType)
+   at EveOPreview.LightInjectContainer.Resolve(Type serviceType) in C:\Users\12613\Downloads\EVEAutoWarning-main\eve-o-preview-unified-source-build\src\Eve-O-Preview\ApplicationBase\LightInjectContainer.cs:line 91
+   at EveOPreview.Program.<>c__DisplayClass5_0.<InitializeApplicationController>b__0(Type t) in C:\Users\12613\Downloads\EVEAutoWarning-main\eve-o-preview-unified-source-build\src\Eve-O-Preview\Program.cs:line 92
+   at MediatR.ServiceFactoryExtensions.GetInstance[T](ServiceFactory factory)
+   at MediatR.Internal.RequestHandlerBase.GetHandler[THandler](ServiceFactory factory)
+   --- End of inner exception stack trace ---
+   at MediatR.Internal.RequestHandlerBase.GetHandler[THandler](ServiceFactory factory)
+   at MediatR.Internal.RequestHandlerWrapperImpl`2.<>c__DisplayClass1_0.<Handle>g__Handler|0()
+   at MediatR.Internal.RequestHandlerWrapperImpl`2.Handle(IRequest`1 request, CancellationToken cancellationToken, ServiceFactory serviceFactory)
+   at MediatR.Mediator.Send[TResponse](IRequest`1 request, CancellationToken cancellationToken)
+   at EveOPreview.Presenters.MainFormPresenter.Activate() in C:\Users\12613\Downloads\EVEAutoWarning-main\eve-o-preview-unified-source-build\src\Eve-O-Preview\Presenters\Implementation\MainFormPresenter.cs:line 66
+   at EveOPreview.View.MainForm.Show() in C:\Users\12613\Downloads\EVEAutoWarning-main\eve-o-preview-unified-source-build\src\Eve-O-Preview\View\Implementation\MainForm.cs:line 370
+   at EveOPreview.Presenter`1.Run() in C:\Users\12613\Downloads\EVEAutoWarning-main\eve-o-preview-unified-source-build\src\Eve-O-Preview\ApplicationBase\Presenter.cs:line 19
+   at EveOPreview.ApplicationController.Run[TPresenter]() in C:\Users\12613\Downloads\EVEAutoWarning-main\eve-o-preview-unified-source-build\src\Eve-O-Preview\ApplicationBase\ApplicationController.cs:line 43
+   at EveOPreview.Program.Main() in C:\Users\12613\Downloads\EVEAutoWarning-main\eve-o-preview-unified-source-build\src\Eve-O-Preview\Program.cs:line 45
