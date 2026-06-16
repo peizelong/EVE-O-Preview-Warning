@@ -15,15 +15,18 @@ namespace EveOPreview.Services.Detection
     ///  - 上升：连续 AlertConfirmationFrames 命中才进入告警态
     ///  - 下降：连续 AlertClearFrames 未命中 且 已过 MinAlertDurationMs 才解除
     ///  - 声光分离：声音只受上升沿/解除控制一次
+    /// 每个监控器持有自己的 IWindowCaptureSession，多窗口不会互相抢 session。
     /// </summary>
     public sealed class ThumbnailWarningMonitor : IDisposable
     {
         private readonly IThumbnailConfiguration _config;
-        private readonly IWindowCaptureService _wgc;
+        private readonly IWindowCaptureService _captureService;
         private readonly ImageTemplateDetector _detector;
         private readonly IMediator _mediator;
         private readonly string _title;
         private readonly IntPtr _hwnd;
+
+        private IWindowCaptureSession _session;
         private CancellationTokenSource _cts;
         private bool _isAlerting;
         private int _confirmationCounter;
@@ -34,14 +37,14 @@ namespace EveOPreview.Services.Detection
 
         public ThumbnailWarningMonitor(
             IThumbnailConfiguration config,
-            IWindowCaptureService wgc,
+            IWindowCaptureService captureService,
             ImageTemplateDetector detector,
             IMediator mediator,
             string title,
             IntPtr hwnd)
         {
             _config = config;
-            _wgc = wgc;
+            _captureService = captureService;
             _detector = detector;
             _mediator = mediator;
             _title = title;
@@ -59,6 +62,10 @@ namespace EveOPreview.Services.Detection
         {
             _cts?.Cancel();
             _cts = null;
+
+            // 停止并释放本监控器自己的 capture session
+            var session = System.Threading.Interlocked.Exchange(ref _session, null);
+            session?.Dispose();
         }
 
         private async Task Loop(CancellationToken token)
@@ -66,54 +73,76 @@ namespace EveOPreview.Services.Detection
             DetectionLog.Write($"[{_title}] 监控循环启动");
             bool templatesLoaded = _detector.HasTemplatesLoaded();
             DetectionLog.Write($"[{_title}] 模板已加载: {templatesLoaded} (白={_detector.HasTemplate(ColorType.White)}, 红={_detector.HasTemplate(ColorType.Red)}, 橙={_detector.HasTemplate(ColorType.Orange)})");
-            DetectionLog.Write($"[{_title}] WGC IsSupported: {_wgc.IsSupported}");
+            DetectionLog.Write($"[{_title}] WGC IsSupported: {_captureService.IsSupported}");
 
             while (!token.IsCancellationRequested)
             {
                 try
                 {
                     if (_config.EnableTemplateDetection
-                        && _wgc.IsSupported)
+                        && _captureService.IsSupported)
                     {
-                        if (!_wgc.TryCaptureFrame(_hwnd, out var bmp) || bmp == null)
+                        // 懒启动本窗口的 capture session
+                        if (_session == null)
                         {
-                            // 只在前几次记录捕获失败，避免日志刷屏
-                            if (_frameCount < 5)
-                                DetectionLog.Write($"[{_title}] TryCaptureFrame 返回 false 或 bmp 为 null");
+                            _session = _captureService.CreateSession(_hwnd);
+                            if (_session != null)
+                            {
+                                _session.Start();
+                                DetectionLog.Write($"[{_title}] Capture session 已启动");
+                            }
+                            else
+                            {
+                                if (_frameCount < 5)
+                                    DetectionLog.Write($"[{_title}] CreateSession 返回 null");
+                            }
+                        }
+
+                        if (_session != null && _session.IsRunning)
+                        {
+                            if (!_session.TryGetLatestFrame(out var bmp) || bmp == null)
+                            {
+                                // 没有新帧到达，跳过本轮（不返回旧帧）
+                            }
+                            else
+                            {
+                                using (bmp)
+                                {
+                                    DetectionLog.Write($"[{_title}] 捕获成功: {bmp.Width}x{bmp.Height}");
+                                    var roi = _config.GetRoi(_title);
+                                    var searchRegion = roi == Rectangle.Empty
+                                        ? new Rectangle(0, 0, bmp.Width, bmp.Height)
+                                        : Clamp(roi, bmp.Width, bmp.Height);
+                                    DetectionLog.Write($"[{_title}] 搜索区域: {searchRegion}");
+
+                                    // 保存 debug 图，用于验证抓帧内容和 ROI 是否正确
+                                    SaveDebugImages(bmp, searchRegion);
+
+                                    _detector.MatchThreshold = _config.TemplateMatchThreshold;
+                                    DetectionLog.Write($"[{_title}] 开始模板匹配, 阈值={_detector.MatchThreshold:F2}");
+                                    var result = await _detector.DetectInRegionAsync(bmp, searchRegion);
+                                    DetectionLog.Write($"[{_title}] 匹配结果: 红={result.RedMatches.Count}, 橙={result.OrangeMatches.Count}, 白={result.WhiteMatches.Count}, 告警={result.HasAlert}");
+                                    if (result.HasAlert)
+                                    {
+                                        foreach (var m in result.AllMatches)
+                                            DetectionLog.Write($"[{_title}]   -> 匹配: {m.ColorType} @ ({m.Location.X},{m.Location.Y}) 相似度={m.Similarity:F3} OCR='{m.RecognizedText}'");
+                                    }
+                                    UpdateStateMachine(result);
+
+                                    // 发布进度事件用于 UI 更新
+                                    await _mediator.Publish(new TemplateDetectionProgress(_title, result, true)).ConfigureAwait(false);
+                                }
+                            }
                         }
                         else
                         {
-                            using (bmp)
-                            {
-                                DetectionLog.Write($"[{_title}] 捕获成功: {bmp.Width}x{bmp.Height}");
-                                var roi = _config.GetRoi(_title);
-                                var searchRegion = roi == Rectangle.Empty
-                                    ? new Rectangle(0, 0, bmp.Width, bmp.Height)
-                                    : Clamp(roi, bmp.Width, bmp.Height);
-                                DetectionLog.Write($"[{_title}] 搜索区域: {searchRegion}");
-
-                                // 保存 debug 图，用于验证 PrintWindow 抓帧内容和 ROI 是否正确
-                                SaveDebugImages(bmp, searchRegion);
-
-                                _detector.MatchThreshold = _config.TemplateMatchThreshold;
-                                DetectionLog.Write($"[{_title}] 开始模板匹配, 阈值={_detector.MatchThreshold:F2}");
-                                var result = await _detector.DetectInRegionAsync(bmp, searchRegion);
-                                DetectionLog.Write($"[{_title}] 匹配结果: 红={result.RedMatches.Count}, 橙={result.OrangeMatches.Count}, 白={result.WhiteMatches.Count}, 告警={result.HasAlert}");
-                                if (result.HasAlert)
-                                {
-                                    foreach (var m in result.AllMatches)
-                                        DetectionLog.Write($"[{_title}]   -> 匹配: {m.ColorType} @ ({m.Location.X},{m.Location.Y}) 相似度={m.Similarity:F3} OCR='{m.RecognizedText}'");
-                                }
-                                UpdateStateMachine(result);
-
-                                // 发布进度事件用于 UI 更新
-                                await _mediator.Publish(new TemplateDetectionProgress(_title, result, true)).ConfigureAwait(false);
-                            }
+                            if (_frameCount < 5)
+                                DetectionLog.Write($"[{_title}] session 未运行或为 null");
                         }
                     }
                     else
                     {
-                        DetectionLog.Write($"[{_title}] 捕获失败或条件不满足: EnableDetect={_config.EnableTemplateDetection}, Supported={_wgc.IsSupported}");
+                        DetectionLog.Write($"[{_title}] 捕获失败或条件不满足: EnableDetect={_config.EnableTemplateDetection}, Supported={_captureService.IsSupported}");
                     }
                 }
                 catch (Exception ex)

@@ -105,7 +105,10 @@ namespace EveOPreview
 			container.Register<IThumbnailDescription>();
 
 			// WGC 抓取 + 模板检测 + 报警
-			container.Register<IWindowCaptureService, WgcCaptureService>();
+			// 使用 RegisterInstance 确保 IWindowCaptureService 是单例工厂：
+			// 它本身无状态，只负责为每个窗口创建独立 session。
+			// 多个 ThumbnailWarningMonitor 共享同一个工厂实例。
+			container.RegisterInstance<IWindowCaptureService>(new WgcCaptureService());
 			container.Register<ImageTemplateDetector>();
 			container.Register<AlarmPlayer>();
 
