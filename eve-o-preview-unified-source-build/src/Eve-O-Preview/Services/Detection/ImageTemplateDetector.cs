@@ -13,7 +13,7 @@ namespace EveOPreview.Services.Detection
         private Bitmap _whiteTemplate;
         private Bitmap _redTemplate;
         private Bitmap _orangeTemplate;
-        private double _matchThreshold = 0.85;
+        private double _matchThreshold = 0.60;
         private OcrRecognizer _ocrRecognizer;
         private int _textRegionWidth = 150;
         private int _textRegionHeight = 30;
@@ -251,6 +251,9 @@ namespace EveOPreview.Services.Detection
                 ImageLockMode.ReadOnly,
                 PixelFormat.Format32bppArgb);
 
+            double bestSimilarity = 0;
+            Point bestPoint = Point.Empty;
+
             try
             {
                 unsafe
@@ -268,6 +271,12 @@ namespace EveOPreview.Services.Detection
                             double similarity = CalculateSimilarity(sourcePtr, templatePtr,
                                 x, y, templateWidth, templateHeight,
                                 sourceStride, templateStride);
+
+                            if (similarity > bestSimilarity)
+                            {
+                                bestSimilarity = similarity;
+                                bestPoint = new Point(x, y);
+                            }
 
                             if (similarity >= _matchThreshold)
                             {
@@ -288,6 +297,11 @@ namespace EveOPreview.Services.Detection
                 source.UnlockBits(sourceData);
                 template.UnlockBits(templateData);
             }
+
+            DetectionLog.Write(
+                $"[Template:{colorType}] best={bestSimilarity:F3} at ({bestPoint.X},{bestPoint.Y}), threshold={_matchThreshold:F3}, template={templateWidth}x{templateHeight}, region={searchRegion}"
+            );
+
             return matches;
         }
 

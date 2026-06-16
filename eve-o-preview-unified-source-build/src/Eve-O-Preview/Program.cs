@@ -105,7 +105,7 @@ namespace EveOPreview
 			container.Register<IThumbnailDescription>();
 
 			// WGC 抓取 + 模板检测 + 报警
-			container.Register<IWgcCaptureService, WgcCaptureService>();
+			container.Register<IWindowCaptureService, WgcCaptureService>();
 			container.Register<ImageTemplateDetector>();
 			container.Register<AlarmPlayer>();
 

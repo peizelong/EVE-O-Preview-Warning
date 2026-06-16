@@ -153,7 +153,7 @@ namespace EveOPreview.Configuration.Implementation
 			// ===== WGC + 模板检测 + ROI 报警 默认值 =====
 			this.EnableWgcCapture = true;
 			this.EnableTemplateDetection = true;
-			this.TemplateMatchThreshold = 0.85;
+			this.TemplateMatchThreshold = 0.60;
 			this.TemplateScanIntervalMs = 500;
 			this.AlarmSoundPath = "";
 			this.AlertConfirmationFrames = 2;

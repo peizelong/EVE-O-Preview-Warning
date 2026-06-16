@@ -40,7 +40,7 @@ namespace EveOPreview.Services
 		private readonly DispatcherTimer _thumbnailUpdateTimer;
 		private readonly IThumbnailViewFactory _thumbnailViewFactory;
 		private readonly Dictionary<IntPtr, IThumbnailView> _thumbnailViews;
-		private readonly IWgcCaptureService _wgc;
+		private readonly IWindowCaptureService _wgc;
 		private readonly ImageTemplateDetector _detector;
 		private readonly Dictionary<IntPtr, ThumbnailWarningMonitor> _monitors;
 
@@ -60,7 +60,7 @@ namespace EveOPreview.Services
 		private List<HotkeyHandler> _cycleClientHotkeyHandlers = new List<HotkeyHandler>();
 		#endregion
 
-		public ThumbnailManager(IMediator mediator, IThumbnailConfiguration configuration, IProcessMonitor processMonitor, IWindowManager windowManager, IThumbnailViewFactory factory, IWgcCaptureService wgc, ImageTemplateDetector detector)
+		public ThumbnailManager(IMediator mediator, IThumbnailConfiguration configuration, IProcessMonitor processMonitor, IWindowManager windowManager, IThumbnailViewFactory factory, IWindowCaptureService wgc, ImageTemplateDetector detector)
 		{
 			this._mediator = mediator;
 			this._processMonitor = processMonitor;
@@ -290,6 +290,12 @@ namespace EveOPreview.Services
 			this._thumbnailUpdateTimer.Start();
 
 			this.RefreshThumbnails();
+
+			// 自动启动模板检测
+			if (this._configuration.EnableTemplateDetection)
+			{
+				this.StartDetection();
+			}
 		}
 
 		public void Stop()

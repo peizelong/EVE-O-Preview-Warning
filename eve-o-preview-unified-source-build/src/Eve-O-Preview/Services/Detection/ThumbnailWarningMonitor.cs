@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using EveOPreview.Configuration;
@@ -18,7 +19,7 @@ namespace EveOPreview.Services.Detection
     public sealed class ThumbnailWarningMonitor : IDisposable
     {
         private readonly IThumbnailConfiguration _config;
-        private readonly IWgcCaptureService _wgc;
+        private readonly IWindowCaptureService _wgc;
         private readonly ImageTemplateDetector _detector;
         private readonly IMediator _mediator;
         private readonly string _title;
@@ -28,11 +29,12 @@ namespace EveOPreview.Services.Detection
         private int _confirmationCounter;
         private int _clearCounter;
         private DateTime _alertStartedAtUtc;
+        private int _frameCount;
         private bool _disposed;
 
         public ThumbnailWarningMonitor(
             IThumbnailConfiguration config,
-            IWgcCaptureService wgc,
+            IWindowCaptureService wgc,
             ImageTemplateDetector detector,
             IMediator mediator,
             string title,
@@ -71,32 +73,42 @@ namespace EveOPreview.Services.Detection
                 try
                 {
                     if (_config.EnableTemplateDetection
-                        && _wgc.IsSupported
-                        && _wgc.TryCaptureFrame(_hwnd, out var bmp)
-                        && bmp != null)
+                        && _wgc.IsSupported)
                     {
-                        using (bmp)
+                        if (!_wgc.TryCaptureFrame(_hwnd, out var bmp) || bmp == null)
                         {
-                            DetectionLog.Write($"[{_title}] 捕获成功: {bmp.Width}x{bmp.Height}");
-                            var roi = _config.GetRoi(_title);
-                            var searchRegion = roi == Rectangle.Empty
-                                ? new Rectangle(0, 0, bmp.Width, bmp.Height)
-                                : Clamp(roi, bmp.Width, bmp.Height);
-                            DetectionLog.Write($"[{_title}] 搜索区域: {searchRegion}");
-
-                            _detector.MatchThreshold = _config.TemplateMatchThreshold;
-                            DetectionLog.Write($"[{_title}] 开始模板匹配, 阈值={_detector.MatchThreshold:F2}");
-                            var result = await _detector.DetectInRegionAsync(bmp, searchRegion);
-                            DetectionLog.Write($"[{_title}] 匹配结果: 红={result.RedMatches.Count}, 橙={result.OrangeMatches.Count}, 白={result.WhiteMatches.Count}, 告警={result.HasAlert}");
-                            if (result.HasAlert)
+                            // 只在前几次记录捕获失败，避免日志刷屏
+                            if (_frameCount < 5)
+                                DetectionLog.Write($"[{_title}] TryCaptureFrame 返回 false 或 bmp 为 null");
+                        }
+                        else
+                        {
+                            using (bmp)
                             {
-                                foreach (var m in result.AllMatches)
-                                    DetectionLog.Write($"[{_title}]   -> 匹配: {m.ColorType} @ ({m.Location.X},{m.Location.Y}) 相似度={m.Similarity:F3} OCR='{m.RecognizedText}'");
-                            }
-                            UpdateStateMachine(result);
+                                DetectionLog.Write($"[{_title}] 捕获成功: {bmp.Width}x{bmp.Height}");
+                                var roi = _config.GetRoi(_title);
+                                var searchRegion = roi == Rectangle.Empty
+                                    ? new Rectangle(0, 0, bmp.Width, bmp.Height)
+                                    : Clamp(roi, bmp.Width, bmp.Height);
+                                DetectionLog.Write($"[{_title}] 搜索区域: {searchRegion}");
 
-                            // 发布进度事件用于 UI 更新
-                            await _mediator.Publish(new TemplateDetectionProgress(_title, result, true)).ConfigureAwait(false);
+                                // 保存 debug 图，用于验证 PrintWindow 抓帧内容和 ROI 是否正确
+                                SaveDebugImages(bmp, searchRegion);
+
+                                _detector.MatchThreshold = _config.TemplateMatchThreshold;
+                                DetectionLog.Write($"[{_title}] 开始模板匹配, 阈值={_detector.MatchThreshold:F2}");
+                                var result = await _detector.DetectInRegionAsync(bmp, searchRegion);
+                                DetectionLog.Write($"[{_title}] 匹配结果: 红={result.RedMatches.Count}, 橙={result.OrangeMatches.Count}, 白={result.WhiteMatches.Count}, 告警={result.HasAlert}");
+                                if (result.HasAlert)
+                                {
+                                    foreach (var m in result.AllMatches)
+                                        DetectionLog.Write($"[{_title}]   -> 匹配: {m.ColorType} @ ({m.Location.X},{m.Location.Y}) 相似度={m.Similarity:F3} OCR='{m.RecognizedText}'");
+                                }
+                                UpdateStateMachine(result);
+
+                                // 发布进度事件用于 UI 更新
+                                await _mediator.Publish(new TemplateDetectionProgress(_title, result, true)).ConfigureAwait(false);
+                            }
                         }
                     }
                     else
@@ -170,6 +182,37 @@ namespace EveOPreview.Services.Detection
             int rw = Math.Max(0, Math.Min(r.Width, w - x));
             int rh = Math.Max(0, Math.Min(r.Height, h - y));
             return new Rectangle(x, y, rw, rh);
+        }
+
+        private void SaveDebugImages(Bitmap bmp, Rectangle searchRegion)
+        {
+            try
+            {
+                _frameCount++;
+                // 每 30 帧保存一次，避免频繁写盘
+                if (_frameCount % 30 != 0) return;
+
+                string debugDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug");
+                Directory.CreateDirectory(debugDir);
+                var safeTitle = string.Join("_", _title.Split(Path.GetInvalidFileNameChars()));
+                var fullPath = Path.Combine(debugDir, $"{safeTitle}_full_frame{_frameCount}.png");
+                bmp.Save(fullPath, System.Drawing.Imaging.ImageFormat.Png);
+                DetectionLog.Write($"[{_title}] Debug: 已保存 {fullPath}");
+
+                if (searchRegion.Width > 0 && searchRegion.Height > 0)
+                {
+                    using (var roiBmp = bmp.Clone(searchRegion, bmp.PixelFormat))
+                    {
+                        var roiPath = Path.Combine(debugDir, $"{safeTitle}_roi_frame{_frameCount}.png");
+                        roiBmp.Save(roiPath, System.Drawing.Imaging.ImageFormat.Png);
+                        DetectionLog.Write($"[{_title}] Debug: 已保存 {roiPath}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                DetectionLog.Write($"[{_title}] Debug 保存失败: {ex.Message}");
+            }
         }
 
         public void Dispose()
