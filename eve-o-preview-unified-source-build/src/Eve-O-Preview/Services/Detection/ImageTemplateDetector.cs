@@ -142,21 +142,21 @@ namespace EveOPreview.Services.Detection
             if (_redTemplate != null)
             {
                 var matches = FindTemplateMatches(screenshot, _redTemplate, region, ColorType.Red);
-                if (_enableOcr && _ocrRecognizer != null && matches.Count > 0) await RecognizeTextForMatches(screenshot, matches);
+                if (_ocrRecognizer != null) await RecognizeTextForMatches(screenshot, matches);
                 result.RedMatches.AddRange(matches);
             }
 
             if (_orangeTemplate != null)
             {
                 var matches = FindTemplateMatches(screenshot, _orangeTemplate, region, ColorType.Orange);
-                if (_enableOcr && _ocrRecognizer != null && matches.Count > 0) await RecognizeTextForMatches(screenshot, matches);
+                if (_ocrRecognizer != null) await RecognizeTextForMatches(screenshot, matches);
                 result.OrangeMatches.AddRange(matches);
             }
 
             if (_whiteTemplate != null)
             {
                 var matches = FindTemplateMatches(screenshot, _whiteTemplate, region, ColorType.White);
-                if (_enableOcr && _ocrRecognizer != null && matches.Count > 0) await RecognizeTextForMatches(screenshot, matches);
+                if (_ocrRecognizer != null) await RecognizeTextForMatches(screenshot, matches);
                 result.WhiteMatches.AddRange(matches);
             }
 

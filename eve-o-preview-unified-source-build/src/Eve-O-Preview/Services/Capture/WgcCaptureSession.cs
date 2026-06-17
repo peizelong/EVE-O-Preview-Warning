@@ -97,6 +97,7 @@ namespace EveOPreview.Services.Capture
         private bool _isRunning;
         private bool _disposed;
         private int _frameArrivedLogCount;
+        private int _isProcessingFrame;
 
         public WgcCaptureSession(IntPtr hwnd)
         {
@@ -293,6 +294,9 @@ namespace EveOPreview.Services.Capture
 
         private void OnFrameArrived(Direct3D11CaptureFramePool sender, object args)
         {
+            if (System.Threading.Interlocked.Exchange(ref _isProcessingFrame, 1) == 1)
+                return;
+
             try
             {
                 if (_frameArrivedLogCount < 10)
@@ -325,6 +329,10 @@ namespace EveOPreview.Services.Capture
             catch (Exception ex)
             {
                 DetectionLog.Write($"[WGC] OnFrameArrived异常: {ex}");
+            }
+            finally
+            {
+                System.Threading.Interlocked.Exchange(ref _isProcessingFrame, 0);
             }
         }
 
@@ -388,9 +396,8 @@ namespace EveOPreview.Services.Capture
                 }
                 finally
                 {
-                    // 释放 GetInterface 返回的 COM 引用，避免泄漏
-                    if (texturePtr != IntPtr.Zero)
-                        Marshal.Release(texturePtr);
+                    // texturePtr 已交给 SharpDX Texture2D 包装对象管理；
+                    // 不再手动 Marshal.Release，避免 native COM double release 崩溃。
                 }
             }
             catch (Exception ex)
