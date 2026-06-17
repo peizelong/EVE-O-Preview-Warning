@@ -96,6 +96,7 @@ namespace EveOPreview.Services.Capture
 
         private bool _isRunning;
         private bool _disposed;
+        private int _frameArrivedLogCount;
 
         public WgcCaptureSession(IntPtr hwnd)
         {
@@ -294,6 +295,12 @@ namespace EveOPreview.Services.Capture
         {
             try
             {
+                if (_frameArrivedLogCount < 10)
+                {
+                    _frameArrivedLogCount++;
+                    DetectionLog.Write($"[WGC] FrameArrived 触发 hwnd={_hwnd}");
+                }
+
                 using (var frame = sender.TryGetNextFrame())
                 {
                     if (frame == null) return;
