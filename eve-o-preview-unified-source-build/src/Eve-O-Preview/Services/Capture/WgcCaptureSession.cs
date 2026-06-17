@@ -269,7 +269,7 @@ namespace EveOPreview.Services.Capture
 
                 // 3. 创建帧池和会话
                 var size = _captureItem.Size;
-                _framePool = Direct3D11CaptureFramePool.Create(
+                _framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
                     _winrtDevice,
                     DirectXPixelFormat.B8G8R8A8UIntNormalized,
                     2,
@@ -332,8 +332,8 @@ namespace EveOPreview.Services.Capture
         {
             try
             {
-                // 通过 IDirect3DDxgiInterfaceAccess 拿原生 D3D11 纹理
-                var dxgiAccess = (IDirect3DDxgiInterfaceAccess)surface;
+                // 通过 C#/WinRT 的 As<T>() 做 QueryInterface，不能直接强转
+                var dxgiAccess = surface.As<IDirect3DDxgiInterfaceAccess>();
                 var iid = IID_ID3D11Texture2D;
                 dxgiAccess.GetInterface(ref iid, out var texturePtr);
 
