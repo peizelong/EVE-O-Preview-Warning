@@ -18,6 +18,8 @@ namespace EveOPreview.Services.Detection
         private int _textRegionWidth = 150;
         private int _textRegionHeight = 30;
         private bool _disposed;
+        // OCR 当前为单独问题，先彻底关掉，避免影响模板匹配链路调试
+        private readonly bool _enableOcr = false;
 
         public double MatchThreshold
         {
@@ -141,23 +143,38 @@ namespace EveOPreview.Services.Detection
 
             if (_redTemplate != null)
             {
+                DetectionLog.Write($"[Detect] 红模板匹配开始");
                 var matches = FindTemplateMatches(screenshot, _redTemplate, region, ColorType.Red);
-                if (_ocrRecognizer != null) await RecognizeTextForMatches(screenshot, matches);
+                if (_enableOcr && _ocrRecognizer != null && matches.Count > 0)
+                {
+                    await RecognizeTextForMatches(screenshot, matches);
+                }
                 result.RedMatches.AddRange(matches);
+                DetectionLog.Write($"[Detect] 红模板匹配完成, matches={matches.Count}");
             }
 
             if (_orangeTemplate != null)
             {
+                DetectionLog.Write($"[Detect] 橙模板匹配开始");
                 var matches = FindTemplateMatches(screenshot, _orangeTemplate, region, ColorType.Orange);
-                if (_ocrRecognizer != null) await RecognizeTextForMatches(screenshot, matches);
+                if (_enableOcr && _ocrRecognizer != null && matches.Count > 0)
+                {
+                    await RecognizeTextForMatches(screenshot, matches);
+                }
                 result.OrangeMatches.AddRange(matches);
+                DetectionLog.Write($"[Detect] 橙模板匹配完成, matches={matches.Count}");
             }
 
             if (_whiteTemplate != null)
             {
+                DetectionLog.Write($"[Detect] 白模板匹配开始");
                 var matches = FindTemplateMatches(screenshot, _whiteTemplate, region, ColorType.White);
-                if (_ocrRecognizer != null) await RecognizeTextForMatches(screenshot, matches);
+                if (_enableOcr && _ocrRecognizer != null && matches.Count > 0)
+                {
+                    await RecognizeTextForMatches(screenshot, matches);
+                }
                 result.WhiteMatches.AddRange(matches);
+                DetectionLog.Write($"[Detect] 白模板匹配完成, matches={matches.Count}");
             }
 
             result.HasAlert = result.RedMatches.Count > 0 || result.OrangeMatches.Count > 0 || result.WhiteMatches.Count > 0;

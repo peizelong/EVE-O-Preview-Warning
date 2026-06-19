@@ -60,6 +60,7 @@ namespace EveOPreview.Services.Detection
 
         public void Stop()
         {
+            DetectionLog.Write($"[{_title}] 监控循环停止");
             _cts?.Cancel();
             _cts = null;
 
@@ -218,8 +219,8 @@ namespace EveOPreview.Services.Detection
             try
             {
                 _frameCount++;
-                // 每 30 帧保存一次，避免频繁写盘
-                if (_frameCount % 30 != 0) return;
+                // 前 5 帧强制保存，后面每 30 帧保存一次
+                if (_frameCount > 5 && _frameCount % 30 != 0) return;
 
                 string debugDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "debug");
                 Directory.CreateDirectory(debugDir);
