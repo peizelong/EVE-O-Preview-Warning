@@ -5,6 +5,10 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
+using OpenCvSharp;
+using OpenCvSharp.Extensions;
+using CvPoint = OpenCvSharp.Point;
+using SDPoint = System.Drawing.Point;
 
 namespace EveOPreview.Services.Detection
 {
@@ -253,70 +257,72 @@ namespace EveOPreview.Services.Detection
 
             int startX = Math.Max(0, searchRegion.X);
             int startY = Math.Max(0, searchRegion.Y);
-            int endX = Math.Min(source.Width - templateWidth, searchRegion.X + searchRegion.Width - templateWidth);
-            int endY = Math.Min(source.Height - templateHeight, searchRegion.Y + searchRegion.Height - templateHeight);
+            int endX = Math.Min(source.Width, searchRegion.X + searchRegion.Width);
+            int endY = Math.Min(source.Height, searchRegion.Y + searchRegion.Height);
 
-            if (endX <= startX || endY <= startY) return matches;
+            int regionWidth = endX - startX;
+            int regionHeight = endY - startY;
+            if (regionWidth <= templateWidth || regionHeight <= templateHeight) return matches;
 
-            BitmapData sourceData = source.LockBits(
-                new Rectangle(0, 0, source.Width, source.Height),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format32bppArgb);
+            // OpenCV 模板匹配：统一转灰度后使用归一化相关系数 (CCoeffNormed)
+            using var sourceMat = BitmapConverter.ToMat(source);
+            using var templateMat = BitmapConverter.ToMat(template);
+            using var sourceGray = new Mat();
+            using var templateGray = new Mat();
+            Cv2.CvtColor(sourceMat, sourceGray, ColorConversionCodes.BGR2GRAY);
+            Cv2.CvtColor(templateMat, templateGray, ColorConversionCodes.BGR2GRAY);
 
-            BitmapData templateData = template.LockBits(
-                new Rectangle(0, 0, templateWidth, templateHeight),
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format32bppArgb);
+            using var searchMat = new Mat(sourceGray, new Rect(startX, startY, regionWidth, regionHeight));
+            using var result = new Mat();
+            Cv2.MatchTemplate(searchMat, templateGray, result, TemplateMatchModes.CCoeffNormed);
 
-            double bestSimilarity = 0;
-            Point bestPoint = Point.Empty;
+            Cv2.MinMaxLoc(result, out double minVal, out double maxVal, out CvPoint minLoc, out CvPoint maxLoc);
+            SDPoint bestPoint = new SDPoint(maxLoc.X + startX, maxLoc.Y + startY);
+            double bestSimilarity = maxVal;
 
-            try
+            // 网格化非极大值抑制：每个 cell 内只保留最佳匹配点
+            int suppressStep = Math.Max(templateWidth, templateHeight) / 2;
+            if (suppressStep < 1) suppressStep = 1;
+            float threshold = (float)_matchThreshold;
+
+            for (int y = 0; y + suppressStep <= result.Rows; y += suppressStep)
             {
-                unsafe
+                for (int x = 0; x + suppressStep <= result.Cols; x += suppressStep)
                 {
-                    byte* sourcePtr = (byte*)sourceData.Scan0;
-                    byte* templatePtr = (byte*)templateData.Scan0;
-                    int sourceStride = sourceData.Stride;
-                    int templateStride = templateData.Stride;
-                    int step = Math.Max(templateWidth / 4, 2);
+                    double cellBest = double.MinValue;
+                    CvPoint cellBestLoc = new CvPoint(0, 0);
+                    bool hit = false;
 
-                    for (int y = startY; y < endY; y += step)
+                    int xMax = Math.Min(result.Cols, x + suppressStep);
+                    int yMax = Math.Min(result.Rows, y + suppressStep);
+                    for (int yy = y; yy < yMax; yy++)
                     {
-                        for (int x = startX; x < endX; x += step)
+                        for (int xx = x; xx < xMax; xx++)
                         {
-                            double similarity = CalculateSimilarity(sourcePtr, templatePtr,
-                                x, y, templateWidth, templateHeight,
-                                sourceStride, templateStride);
-
-                            if (similarity > bestSimilarity)
+                            double v = result.At<float>(yy, xx);
+                            if (v >= threshold && v > cellBest)
                             {
-                                bestSimilarity = similarity;
-                                bestPoint = new Point(x, y);
-                            }
-
-                            if (similarity >= _matchThreshold)
-                            {
-                                matches.Add(new TemplateMatch
-                                {
-                                    Location = new Point(x, y),
-                                    Similarity = similarity,
-                                    ColorType = colorType
-                                });
-                                x += templateWidth;
+                                cellBest = v;
+                                cellBestLoc = new CvPoint(xx, yy);
+                                hit = true;
                             }
                         }
                     }
+
+                    if (hit)
+                    {
+                        matches.Add(new TemplateMatch
+                        {
+                            Location = new SDPoint(cellBestLoc.X + startX, cellBestLoc.Y + startY),
+                            Similarity = cellBest,
+                            ColorType = colorType
+                        });
+                    }
                 }
-            }
-            finally
-            {
-                source.UnlockBits(sourceData);
-                template.UnlockBits(templateData);
             }
 
             DetectionLog.Write(
-                $"[Template:{colorType}] best={bestSimilarity:F3} at ({bestPoint.X},{bestPoint.Y}), threshold={_matchThreshold:F3}, template={templateWidth}x{templateHeight}, region={searchRegion}"
+                $"[Template:{colorType}] best={bestSimilarity:F3} at ({bestPoint.X},{bestPoint.Y}), threshold={_matchThreshold:F3}, template={templateWidth}x{templateHeight}, region={searchRegion}, hits={matches.Count}"
             );
 
             return matches;
@@ -326,27 +332,8 @@ namespace EveOPreview.Services.Detection
             int offsetX, int offsetY, int templateWidth, int templateHeight,
             int sourceStride, int templateStride)
         {
-            long totalDiff = 0;
-            for (int ty = 0; ty < templateHeight; ty += 2)
-            {
-                for (int tx = 0; tx < templateWidth; tx += 2)
-                {
-                    int sourceOffset = (offsetY + ty) * sourceStride + (offsetX + tx) * 4;
-                    int templateOffset = ty * templateStride + tx * 4;
-                    byte sb = sourcePtr[sourceOffset];
-                    byte sg = sourcePtr[sourceOffset + 1];
-                    byte sr = sourcePtr[sourceOffset + 2];
-                    byte tb = templatePtr[templateOffset];
-                    byte tg = templatePtr[templateOffset + 1];
-                    byte tr = templatePtr[templateOffset + 2];
-                    int diff = Math.Abs(sr - tr) + Math.Abs(sg - tg) + Math.Abs(sb - tb);
-                    totalDiff += diff;
-                }
-            }
-            int sampledPixels = (templateWidth / 2) * (templateHeight / 2);
-            double avgDiff = (double)totalDiff / sampledPixels;
-            double maxDiff = 255 * 3;
-            return 1.0 - (avgDiff / maxDiff);
+            // 已改用 OpenCV 的归一化相关系数匹配 (CCoeffNormed)，保留此方法仅为兼容旧调用方。
+            return 0.0;
         }
 
         public void Dispose()
